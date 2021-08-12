@@ -7,9 +7,12 @@ import torch
 import k2
 import k2.ragged as k2r
 
-from prepare_lang import generate_id_map, write_mapping
-
-from prepare_lang_bpe import add_disambig_symbols, lexicon_to_fst_no_sil
+from prepare_lang_bpe import (
+    generate_id_map,
+    write_mapping,
+    add_disambig_symbols,
+    lexicon_to_fst_no_sil,
+)
 
 
 def get_texts(best_paths: k2.Fsa) -> List[List[int]]:
@@ -46,7 +49,7 @@ def get_texts(best_paths: k2.Fsa) -> List[List[int]]:
     return k2r.to_list(aux_labels)
 
 
-def ctc_decoding(
+def fst_decoding(
     log_probs: torch.Tensor,
     ctc_topo: k2.Fsa,
     search_beam: float = 20.0,
@@ -65,7 +68,8 @@ def ctc_decoding(
             is the output of an encoder network.
         ctc_topo:
             a CTC topology FST that represents a specific topology used to
-            convert the network outputs to a sequence of tokens.
+            convert the network outputs to a sequence of tokens. Or a HLG
+            fst that composes ctc topoloy fst, lexicon fst and LM fst.
         search_beam:
             Decoding beam, e.g. 20.  Smaller is faster, larger is more exact
             (less pruning). This is the default value; it may be modified by
@@ -144,7 +148,7 @@ def read_words(words_txt: str, excluded=["<eps>", "<UNK>"]) -> List[str]:
     return ans
 
 
-def test_read_lexicon(
+def generate_lexicon_fst(
     lexicon: list, tokens: list, words: list,
 ) -> Tuple[int, int, k2.Fsa]:
     """generate a lexicon fst based on input lists.
@@ -190,77 +194,3 @@ def test_read_lexicon(
     )
 
     return first_token_disambig_id, first_word_disambig_id, fsa_disambig
-
-
-def HLG_decoding(
-    log_probs: torch.Tensor,
-    HLG: k2.Fsa,
-    search_beam: float = 20.0,
-    output_beam: float = 8.0,
-    min_active_states: int = 30,
-    max_active_states: int = 10000,
-) -> Tuple[List[List[int]], List[float]]:
-    """building an FSA decoder based on ctc topology.
-        Args:
-            log_probs:
-                torch.Tensor of dimension [B, T, C].
-                    where, B = Batchsize,
-                    T = the number of frames,
-                    C = number of tokens
-                It represents the probability distribution over tokens, which
-                is the output of an encoder network.
-            HLG:
-                a fst that composes ctc topoloy fst, lexicon fst and LM fst.
-            search_beam:
-                Decoding beam, e.g. 20.  Smaller is faster, larger is more exact
-                (less pruning). This is the default value; it may be modified by
-                `min_active_states` and `max_active_states`.
-            output_beam:
-                Pruning beam for the output of intersection (vs. best path);
-                equivalent to kaldi's lattice-beam.  E.g. 8.
-            min_active_states:
-                Minimum number of FSA states that are allowed to be active on
-                any given frame for any given intersection/composition task.
-                This is advisory, in that it will try not to have fewer than
-                this number active. Set it to zero if there is no constraint.
-           max_active_states:
-                Maximum number of FSA states that are allowed to be active on
-                any given frame for any given intersection/composition task.
-                This is advisory, in that it will try not to exceed that but
-                may not always succeed. You can use a very large number if no
-                constraint is needed.
-
-       Return:
-            predicted_tokens : a list of lists of int,
-                This list contains batch_size number. Each inside list contains
-                a list stores all the hypothesis for this sentence.
-            scores : a list of float64
-                This list contains the total score of each sequences.
-    """
-
-    batchnum = log_probs.size(0)
-
-    supervisions = []
-    for i in range(batchnum):
-        supervisions.append([i, 0, log_probs.size(1)])
-    supervision_segments = torch.tensor(supervisions, dtype=torch.int32)
-
-    dense_fsa_vec = k2.DenseFsaVec(log_probs, supervision_segments)
-
-    lattices = k2.intersect_dense_pruned(
-        HLG,
-        dense_fsa_vec,
-        search_beam=search_beam,
-        output_beam=output_beam,
-        min_active_states=min_active_states,
-        max_active_states=max_active_states,
-    )
-
-    best_paths = k2.shortest_path(lattices, True)
-
-    predicted_tokens = get_texts(best_paths)
-
-    # sum the scores for each sequence
-    scores = best_paths.get_tot_scores(True, True)
-
-    return predicted_tokens, scores.tolist()
