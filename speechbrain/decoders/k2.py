@@ -7,7 +7,8 @@ import torch
 import k2
 import k2.ragged as k2r
 
-from prepare_lang_bpe import (
+from speechbrain.decoders.prepare_lang_bpe import (
+
     generate_id_map,
     write_mapping,
     add_disambig_symbols,
