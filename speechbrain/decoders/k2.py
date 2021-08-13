@@ -1,19 +1,15 @@
 # Copyright (c)  2021  Tsinghua University (Authors: Rong Fu)
 
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import torch
+from speechbrain.decoders.prepare_lang_bpe import (add_disambig_symbols,
+                                                   generate_id_map,
+                                                   lexicon_to_fst_no_sil,
+                                                   write_mapping)
 
 import k2
 import k2.ragged as k2r
-
-from speechbrain.decoders.prepare_lang_bpe import (
-
-    generate_id_map,
-    write_mapping,
-    add_disambig_symbols,
-    lexicon_to_fst_no_sil,
-)
 
 
 def get_texts(best_paths: k2.Fsa) -> List[List[int]]:
@@ -52,7 +48,7 @@ def get_texts(best_paths: k2.Fsa) -> List[List[int]]:
 
 def fst_decoding(
     log_probs: torch.Tensor,
-    ctc_topo: k2.Fsa,
+    HLG: k2.Fsa,
     search_beam: float = 20.0,
     output_beam: float = 8.0,
     min_active_states: int = 30,
@@ -67,7 +63,7 @@ def fst_decoding(
                 C = number of tokens
             It represents the probability distribution over tokens, which
             is the output of an encoder network.
-        ctc_topo:
+        HLG:
             a CTC topology FST that represents a specific topology used to
             convert the network outputs to a sequence of tokens. Or a HLG
             fst that composes ctc topoloy fst, lexicon fst and LM fst.
@@ -107,7 +103,7 @@ def fst_decoding(
     dense_fsa_vec = k2.DenseFsaVec(log_probs, supervision_segments)
 
     lattices = k2.intersect_dense_pruned(
-        ctc_topo,
+        HLG,
         dense_fsa_vec,
         search_beam=search_beam,
         output_beam=output_beam,
@@ -151,7 +147,7 @@ def read_words(words_txt: str, excluded=["<eps>", "<UNK>"]) -> List[str]:
 
 def generate_lexicon_fst(
     lexicon: list, tokens: list, words: list,
-) -> Tuple[int, int, k2.Fsa]:
+) -> Tuple[Dict[str, int], Dict[str, int], k2.Fsa]:
     """generate a lexicon fst based on input lists.
         Args:
             lexicon:
@@ -161,10 +157,10 @@ def generate_lexicon_fst(
             words:
                 a list of words.
         Returns:
-            first_token_disambig_id:
-                the first ID of disambiguation symbols in tokens, eg #0.
-            first_word_disambig_id:
-                the first ID of disambiguation symbols in words, eg #0.
+            token2id:
+                a dict containing the mapping between tokens and IDs.
+            word2id:
+                a dict containing the mapping between words and IDs.
             fsa_disambig:
                 lexicon fst after adding pseudo-phone disambiguation symbols.
     """
@@ -180,13 +176,6 @@ def generate_lexicon_fst(
     token2id = generate_id_map(tokens)
     word2id = generate_id_map(words)
 
-    write_mapping("phones.txt", token2id)
-    write_mapping("words.txt", word2id)
-
-    # find_first_disambig_symbol
-    first_token_disambig_id = token2id["#0"]
-    first_word_disambig_id = word2id["#0"]
-
     fsa_disambig = lexicon_to_fst_no_sil(
         lexicon_disambig,
         token2id=token2id,
@@ -194,4 +183,4 @@ def generate_lexicon_fst(
         need_self_loops=True,
     )
 
-    return first_token_disambig_id, first_word_disambig_id, fsa_disambig
+    return token2id, word2id, fsa_disambig
