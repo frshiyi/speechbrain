@@ -20,14 +20,12 @@ and generates the following files in the directory data/lang/bpe:
 from pathlib import Path
 
 import k2
-
 import torch
-
 from speechbrain.decoders.prepare_lang_bpe import (
-    write_lexicon,
     add_disambig_symbols,
-    lexicon_to_fst_no_sil,
     generate_lexicon,
+    lexicon_to_fst_no_sil,
+    write_lexicon,
 )
 
 
@@ -69,9 +67,7 @@ def main():
     write_lexicon(lang_dir / "lexicon_disambig.txt", lexicon_disambig)
 
     L = lexicon_to_fst_no_sil(
-        lexicon,
-        token2id=token_sym_table,
-        word2id=word_sym_table,
+        lexicon, token2id=token_sym_table, word2id=word_sym_table,
     )
 
     L_disambig = lexicon_to_fst_no_sil(
