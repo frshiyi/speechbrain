@@ -268,5 +268,7 @@ def generate_lexicon(model_file: str, words: List[str]) -> Lexicon:
     for word, pieces in zip(words, words_pieces):
         lexicon.append((word, pieces))
 
-    lexicon.append(("<UNK>", ["<UNK>"]))
+    #lexicon.append(("<UNK>", ["<UNK>"]))
+    lexicon.append(("<UNK>", ["<unk>"]))
+    
     return lexicon
